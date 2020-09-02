@@ -1,69 +1,62 @@
 package audited
 
 import (
-	"fmt"
-	"reflect"
-
-	"github.com/jinzhu/gorm"
+	"gorm.io/gorm"
 )
 
 type auditableInterface interface {
-	SetCreatedBy(createdBy interface{})
-	GetCreatedBy() string
-	SetUpdatedBy(updatedBy interface{})
-	GetUpdatedBy() string
+	SetCreatedBy(createdBy int)
+	GetCreatedBy() int
+	SetUpdatedBy(updatedBy int)
+	GetUpdatedBy() int
+	SetDeletedBy(updatedBy int)
+	GetDeletedBy() int
 }
 
-func isAuditable(scope *gorm.Scope) (isAuditable bool) {
-	if scope.GetModelStruct().ModelType == nil {
+func isAuditable(db *gorm.DB) (isAuditable bool) {
+	if db.Statement.Model == nil {
 		return false
 	}
-	_, isAuditable = reflect.New(scope.GetModelStruct().ModelType).Interface().(auditableInterface)
+	_, isAuditable = db.Statement.Model.(auditableInterface)
 	return
 }
 
-func getCurrentUser(scope *gorm.Scope) (string, bool) {
+func getCurrentUser(db *gorm.DB) (uint, bool) {
 	var user interface{}
 	var hasUser bool
 
-	user, hasUser = scope.DB().Get("audited:current_user")
-
-	if !hasUser {
-		user, hasUser = scope.DB().Get("qor:current_user")
+	user, hasUser = db.Get("audited:current_user")
+	v, ok := user.(uint)
+	if ok != true {
+		return 0, ok
 	}
-
 	if hasUser {
-		var currentUser string
-		if primaryField := scope.New(user).PrimaryField(); primaryField != nil {
-			currentUser = fmt.Sprintf("%v", primaryField.Field.Interface())
+		return v, true
+	}
+
+	return 0, false
+}
+
+func assignCreatedBy(db *gorm.DB) {
+	if !isAuditable(db) {
+		return
+	}
+	if user, ok := getCurrentUser(db); ok {
+		db.Statement.SetColumn("CreatedBy", user)
+	}
+}
+
+func assignUpdatedBy(db *gorm.DB) {
+	if !isAuditable(db) {
+		return
+	}
+	if user, ok := getCurrentUser(db); ok {
+		if attrs, ok := db.InstanceGet("gorm:update_attrs"); ok {
+			updateAttrs := attrs.(map[string]interface{})
+			updateAttrs["updated_by"] = user
+			db.InstanceSet("gorm:update_attrs", updateAttrs)
 		} else {
-			currentUser = fmt.Sprintf("%v", user)
-		}
-
-		return currentUser, true
-	}
-
-	return "", false
-}
-
-func assignCreatedBy(scope *gorm.Scope) {
-	if isAuditable(scope) {
-		if user, ok := getCurrentUser(scope); ok {
-			scope.SetColumn("CreatedBy", user)
-		}
-	}
-}
-
-func assignUpdatedBy(scope *gorm.Scope) {
-	if isAuditable(scope) {
-		if user, ok := getCurrentUser(scope); ok {
-			if attrs, ok := scope.InstanceGet("gorm:update_attrs"); ok {
-				updateAttrs := attrs.(map[string]interface{})
-				updateAttrs["updated_by"] = user
-				scope.InstanceSet("gorm:update_attrs", updateAttrs)
-			} else {
-				scope.SetColumn("UpdatedBy", user)
-			}
+			db.Statement.SetColumn("UpdatedBy", user)
 		}
 	}
 }
@@ -72,9 +65,9 @@ func assignUpdatedBy(scope *gorm.Scope) {
 func RegisterCallbacks(db *gorm.DB) {
 	callback := db.Callback()
 	if callback.Create().Get("audited:assign_created_by") == nil {
-		callback.Create().After("gorm:before_create").Register("audited:assign_created_by", assignCreatedBy)
+		callback.Create().Before("gorm:before_create").Register("audited:assign_created_by", assignCreatedBy)
 	}
 	if callback.Update().Get("audited:assign_updated_by") == nil {
-		callback.Update().After("gorm:before_update").Register("audited:assign_updated_by", assignUpdatedBy)
+		callback.Update().Before("gorm:before_update").Register("audited:assign_updated_by", assignUpdatedBy)
 	}
 }
