@@ -15,11 +15,6 @@ type Product struct {
 	audited.AuditedModel
 }
 
-type User struct {
-	gorm.Model
-	Name string
-}
-
 var db *gorm.DB
 
 func testDB() (*gorm.DB, error) {
@@ -29,7 +24,7 @@ func testDB() (*gorm.DB, error) {
 
 func TestMain(m *testing.M) {
 	db, _ = testDB()
-	db.AutoMigrate(&User{}, &Product{})
+	db.AutoMigrate(audited.User{}, &Product{})
 	audited.RegisterCallbacks(db)
 	code := m.Run()
 	DB, _ := db.DB()
@@ -39,20 +34,20 @@ func TestMain(m *testing.M) {
 }
 
 func TestCreateUser(t *testing.T) {
-	user := User{Name: "grande"}
+	user := audited.User{Name: "grande"}
 	db.Save(&user)
-	db := db.Set("audited:current_user", user.ID)
+	db := db.Set("audited:current_user", user)
 
 	product := Product{Name: "product1"}
-	db.Save(&product)
+	db.Debug().Save(&product)
 
-	if product.CreatedBy != int(user.ID) {
+	if product.GetCreatedBy() != int(user.ID) {
 		t.Errorf("created_by is not equal current user")
 	}
 
 	product.Name = "product_new"
 	db.Save(&product)
-	if product.UpdatedBy != int(user.ID) {
+	if product.GetUpdatedBy() != int(user.ID) {
 		t.Errorf("updated_by is not equal current user")
 	}
 }

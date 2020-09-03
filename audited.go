@@ -2,43 +2,58 @@
 //
 package audited
 
+import "gorm.io/gorm"
+
+type User struct {
+	gorm.Model
+	Name string
+}
+
+// GetID get id
+func (model User) GetID() uint {
+	return model.ID
+}
+
 // AuditedModel make Model Auditable, embed `audited.AuditedModel` into your model as anonymous field to make the model auditable
 //    type User struct {
 //      gorm.Model
 //      audited.AuditedModel
 //    }
 type AuditedModel struct {
-	CreatedBy int
-	UpdatedBy int
-	DeletedBy int
-}
-
-// SetCreatedBy set created by
-func (model *AuditedModel) SetCreatedBy(createdBy int) {
-	model.CreatedBy = createdBy
+	CreatedByID int
+	UpdatedByID int
+	DeletedByID int
+	CreatedBy   User `gorm:"foreignKey:CreatedByID"`
+	UpdatedBy   User `gorm:"foreignKey:UpdatedByID"`
+	DeletedBy   User `gorm:"foreignKey:DeletedByID"`
 }
 
 // GetCreatedBy get created by
 func (model AuditedModel) GetCreatedBy() int {
-	return model.CreatedBy
+	return model.CreatedByID
 }
 
-// SetUpdatedBy set updated by
-func (model *AuditedModel) SetUpdatedBy(updatedBy int) {
-	model.UpdatedBy = updatedBy
+// SetCreatedBy set created by
+func (model AuditedModel) SetCreatedBy(i interface{}) {
+	model.CreatedByID = i.(int)
 }
 
 // GetUpdatedBy get updated by
 func (model AuditedModel) GetUpdatedBy() int {
-	return model.UpdatedBy
+	return model.UpdatedByID
 }
 
-// SetDeletedBy set deleted by
-func (model *AuditedModel) SetDeletedBy(deletedBy int) {
-	model.DeletedBy = deletedBy
+// SetUpdatedBy set created by
+func (model AuditedModel) SetUpdatedBy(i interface{}) {
+	model.UpdatedByID = i.(int)
 }
 
 // GetDeletedBy get deleted by
 func (model AuditedModel) GetDeletedBy() int {
-	return model.DeletedBy
+	return model.DeletedByID
+}
+
+// SetDeletedBy set created by
+func (model AuditedModel) SetDeletedBy(i interface{}) {
+	model.DeletedByID = i.(int)
 }
