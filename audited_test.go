@@ -16,6 +16,32 @@ type OtherUser struct {
 	Name string
 }
 
+type AuditedUser struct {
+	gorm.Model
+	Name        string
+	CreatedByID uint
+	UpdatedByID uint
+	DeletedByID uint
+	CreatedBy   *AuditedUser `gorm:"foreignKey:CreatedByID"`
+	UpdatedBy   *AuditedUser `gorm:"foreignKey:UpdatedByID"`
+	DeletedBy   *AuditedUser `gorm:"foreignKey:DeletedByID"`
+}
+
+// SetCreatedBy set created by
+func (model AuditedUser) SetCreatedBy(i interface{}) {
+	model.CreatedByID = i.(uint)
+}
+
+// SetUpdatedBy set created by
+func (model AuditedUser) SetUpdatedBy(i interface{}) {
+	model.UpdatedByID = i.(uint)
+}
+
+// SetDeletedBy set created by
+func (model AuditedUser) SetDeletedBy(i interface{}) {
+	model.DeletedByID = i.(uint)
+}
+
 type Product struct {
 	audited.AuditedModel
 	LinkedUserID int
@@ -73,7 +99,7 @@ func testDB() (*gorm.DB, error) {
 
 func TestMain(m *testing.M) {
 	db, _ = testDB()
-	db.AutoMigrate(audited.User{}, &OtherUser{}, &Product{}, &Company{})
+	db.AutoMigrate(audited.User{}, &OtherUser{}, &AuditedUser{}, &Product{}, &Company{})
 	db.Use(audited.New())
 	code := m.Run()
 	DB, _ := db.DB()
@@ -161,4 +187,16 @@ func TestCreateCompanySuccess(t *testing.T) {
 	db.Save(&company)
 
 	assert.Equal(t, company.UpdatedByID, auditUser.ID)
+}
+
+func TestCreateAuditedUserSuccess(t *testing.T) {
+	auditUser := AuditedUser{Name: "audit"}
+	db.Create(&auditUser)
+
+	ctx := context.WithValue(context.Background(), audited.GormAuditKey(audited.UserKey), auditUser)
+	db = db.WithContext(ctx)
+	user := AuditedUser{Name: "test"}
+	db.Create(&user)
+
+	assert.Equal(t, user.CreatedByID, auditUser.ID)
 }

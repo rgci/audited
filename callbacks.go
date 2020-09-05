@@ -7,6 +7,9 @@ import (
 	"gorm.io/gorm"
 )
 
+const recursionError = "Recursion detected"
+const unknownTypeError = "Unknown type while checking for possible recursion"
+
 // UserKey string value for user key to store in context
 const UserKey = "current_user"
 const createdColumn = "CreatedBy"
@@ -34,15 +37,35 @@ func isAuditable(db *gorm.DB) (isAuditable bool) {
 	return isAuditable
 }
 
-func isSameTypeAuditField(db *gorm.DB, f string, u interface{}) error {
+func isSameTypeAuditField(db *gorm.DB, f string, u interface{}) bool {
 	fieldLookup := db.Statement.Schema.LookUpField(f)
 	typeofUser := reflect.TypeOf(u)
 	if fieldLookup.IndirectFieldType != typeofUser {
-		return fmt.Errorf(
+		db.Logger.Error(db.Statement.Context, fmt.Sprintf(
 			"Types %v and %v do not match. Audited column %v will not be set",
-			fieldLookup.FieldType, typeofUser, f)
+			fieldLookup.FieldType, typeofUser, f))
+		return false
 	}
-	return nil
+	// catch recursion
+	if f == createdColumn {
+		primaryFieldName := fieldLookup.Schema.PrioritizedPrimaryField.Name
+		reflectedFieldValue := db.Statement.ReflectValue.FieldByName(primaryFieldName)
+		reflectedUserValue := reflect.ValueOf(u).FieldByName(primaryFieldName)
+		indirectFieldValue := reflect.Indirect(reflectedFieldValue)
+		indirectUserValue := reflect.Indirect(reflectedUserValue)
+		switch indirectFieldValue.Interface().(type) {
+		case uint:
+			if indirectFieldValue.Interface().(uint) == indirectUserValue.Interface().(uint) {
+				db.Logger.Info(db.Statement.Context, recursionError)
+				return false
+			}
+		default:
+			db.Logger.Error(db.Statement.Context, unknownTypeError)
+			return false
+		}
+	}
+
+	return true
 }
 
 func assignColumn(db *gorm.DB, c string) {
@@ -53,8 +76,7 @@ func assignColumn(db *gorm.DB, c string) {
 	if user == nil {
 		return
 	}
-	if err := isSameTypeAuditField(db, c, user); err != nil {
-		db.Logger.Error(db.Statement.Context, err.Error())
+	if ok := isSameTypeAuditField(db, c, user); !ok {
 		return
 	}
 	db.Statement.SetColumn(c, user)
