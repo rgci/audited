@@ -98,3 +98,21 @@ func TestCreateUserFail(t *testing.T) {
 	db.Save(&product)
 	assert.NotEqual(t, product.UpdatedByID, auditUser.ID)
 }
+
+func TestMissingAuditUser(t *testing.T) {
+	ctx := context.WithValue(context.Background(), "gorm:audited:current_user", nil)
+	db = db.WithContext(ctx)
+	user := audited.User{Name: "test"}
+	db.Create(&user)
+
+	product := Product{
+		Name: "test",
+	}
+	db.Create(&product)
+
+	assert.Equal(t, product.CreatedByID, uint(0))
+
+	product.Name = "product_new"
+	db.Save(&product)
+	assert.Equal(t, product.UpdatedByID, uint(0))
+}

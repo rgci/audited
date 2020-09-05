@@ -2,6 +2,7 @@ package audited
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 
 	"gorm.io/gorm"
@@ -33,7 +34,10 @@ func isSameTypeAuditField(db *gorm.DB, f string, u interface{}) error {
 	fieldLookup := db.Statement.Schema.LookUpField(f)
 	typeofUser := reflect.TypeOf(u)
 	if fieldLookup.FieldType != typeofUser {
-		return errors.New("Types do not match. Audited column will not be set")
+		return errors.New(
+			fmt.Sprintf(
+				"Types %v and %v do not match. Audited column %v will not be set",
+				fieldLookup.FieldType, typeofUser, f))
 	}
 	return nil
 }
