@@ -19,6 +19,7 @@ const deletedColumn = "DeletedBy"
 // GormAuditKey for storing user context
 type GormAuditKey string
 
+// Audited plugin struct
 type Audited struct {
 	*gorm.DB
 }

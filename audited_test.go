@@ -43,7 +43,7 @@ func (model AuditedUser) SetDeletedBy(i interface{}) {
 }
 
 type Product struct {
-	audited.AuditedModel
+	audited.Model
 	LinkedUserID int
 	LinkedUser   audited.User `gorm:"foreignKey:LinkedUserID"`
 	Name         string
@@ -199,4 +199,9 @@ func TestCreateAuditedUserSuccess(t *testing.T) {
 	db.Create(&user)
 
 	assert.Equal(t, user.CreatedByID, auditUser.ID)
+
+	auditUser.Name = "test2"
+	db.Save(&auditUser)
+
+	assert.Equal(t, auditUser.UpdatedByID, auditUser.ID)
 }
