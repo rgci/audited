@@ -1,17 +1,23 @@
 package audited
 
 import (
+	"errors"
 	"reflect"
 
 	"gorm.io/gorm"
 )
 
+const createdColumn = "CreatedBy"
+const updatedColumn = "UpdatedBy"
+const deletedColumn = "DeletedBy"
+
+type Audited struct {
+	*gorm.DB
+}
+
 type auditableInterface interface {
-	GetCreatedBy() int
 	SetCreatedBy(i interface{})
-	GetUpdatedBy() int
 	SetUpdatedBy(i interface{})
-	GetDeletedBy() int
 	SetDeletedBy(i interface{})
 }
 
@@ -20,53 +26,52 @@ func isAuditable(db *gorm.DB) (isAuditable bool) {
 		return false
 	}
 	_, isAuditable = db.Statement.Model.(auditableInterface)
-	return
+	return isAuditable
 }
 
-func getCurrentUser(db *gorm.DB) (uint64, bool) {
-	user, _ := db.Get("audited:current_user")
-	rv := reflect.ValueOf(user)
-	if rv.Kind() != reflect.Struct {
-		return 0, false
+func isSameTypeAuditField(db *gorm.DB, f string, u interface{}) error {
+	fieldLookup := db.Statement.Schema.LookUpField(f)
+	typeofUser := reflect.TypeOf(u)
+	if fieldLookup.FieldType != typeofUser {
+		return errors.New("Types do not match. Audited column will not be set")
 	}
-	field := rv.FieldByName("ID")
-	if field.Kind() != reflect.Uint {
-		return 0, false
-	}
-	return field.Uint(), true
+	return nil
 }
 
-func assignCreatedBy(db *gorm.DB) {
+func assignColumn(db *gorm.DB, c string) {
 	if !isAuditable(db) {
 		return
 	}
-	if user, ok := getCurrentUser(db); ok {
-		db.Statement.SetColumn("CreatedByID", user)
-	}
-}
-
-func assignUpdatedBy(db *gorm.DB) {
-	if !isAuditable(db) {
+	user := db.Statement.Context.Value("gorm:audited:current_user")
+	if err := isSameTypeAuditField(db, c, user); err != nil {
+		db.Logger.Error(db.Statement.Context, err.Error())
 		return
 	}
-	if user, ok := getCurrentUser(db); ok {
-		if attrs, ok := db.InstanceGet("gorm:update_attrs"); ok {
-			updateAttrs := attrs.(map[string]interface{})
-			updateAttrs["updated_by"] = user
-			db.InstanceSet("gorm:update_attrs", updateAttrs)
-		} else {
-			db.Statement.SetColumn("UpdatedByID", user)
-		}
-	}
+	db.Statement.SetColumn(c, user)
 }
 
-// RegisterCallbacks register callback into GORM DB
-func RegisterCallbacks(db *gorm.DB) {
+func assignCreatedBy(db *gorm.DB) { assignColumn(db, createdColumn) }
+
+func assignUpdatedBy(db *gorm.DB) { assignColumn(db, updatedColumn) }
+
+// New Instance of audited plugin
+func New() *Audited {
+	return &Audited{}
+}
+
+// Name of audited plugin
+func (a *Audited) Name() string {
+	return "gorm:audited"
+}
+
+// Initialize initializes plugin
+func (a *Audited) Initialize(db *gorm.DB) error {
 	callback := db.Callback()
-	if callback.Create().Get("audited:assign_created_by") == nil {
-		callback.Create().Before("gorm:before_create").Register("audited:assign_created_by", assignCreatedBy)
+	if callback.Create().Get("gorm:audited:assign_created_by") == nil {
+		callback.Create().Before("gorm:before_create").Register("gorm:audited:assign_created_by", assignCreatedBy)
 	}
 	if callback.Update().Get("audited:assign_updated_by") == nil {
-		callback.Update().Before("gorm:before_update").Register("audited:assign_updated_by", assignUpdatedBy)
+		callback.Update().Before("gorm:before_update").Register("gorm:audited:assign_updated_by", assignUpdatedBy)
 	}
+	return nil
 }

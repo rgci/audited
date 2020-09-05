@@ -1,18 +1,41 @@
 package audited_test
 
 import (
+	"context"
 	"os"
 	"testing"
 
 	"github.com/rgci/audited"
+	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
-type Product struct {
+type OtherUser struct {
 	gorm.Model
 	Name string
+}
+
+type Product struct {
 	audited.AuditedModel
+	LinkedUserID int
+	LinkedUser   audited.User `gorm:"foreignKey:LinkedUserID"`
+	Name         string
+}
+
+// SetCreatedBy set created by
+func (model Product) SetCreatedBy(i interface{}) {
+	model.CreatedByID = i.(uint)
+}
+
+// SetUpdatedBy set created by
+func (model Product) SetUpdatedBy(i interface{}) {
+	model.UpdatedByID = i.(uint)
+}
+
+// SetDeletedBy set created by
+func (model Product) SetDeletedBy(i interface{}) {
+	model.DeletedByID = i.(uint)
 }
 
 var db *gorm.DB
@@ -24,8 +47,8 @@ func testDB() (*gorm.DB, error) {
 
 func TestMain(m *testing.M) {
 	db, _ = testDB()
-	db.AutoMigrate(audited.User{}, &Product{})
-	audited.RegisterCallbacks(db)
+	db.AutoMigrate(audited.User{}, &Product{}, &OtherUser{})
+	db.Use(audited.New())
 	code := m.Run()
 	DB, _ := db.DB()
 	DB.Close()
@@ -33,21 +56,45 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func TestCreateUser(t *testing.T) {
-	user := audited.User{Name: "grande"}
-	db.Save(&user)
-	db := db.Set("audited:current_user", user)
+func TestCreateUserSuccess(t *testing.T) {
+	auditUser := audited.User{Name: "audit"}
+	db.Create(&auditUser)
 
-	product := Product{Name: "product1"}
-	db.Debug().Save(&product)
+	ctx := context.WithValue(context.Background(), "gorm:audited:current_user", auditUser)
+	db = db.WithContext(ctx)
+	user := audited.User{Name: "test"}
+	db.Create(&user)
 
-	if product.GetCreatedBy() != int(user.ID) {
-		t.Errorf("created_by is not equal current user")
+	product := Product{
+		Name: "test",
 	}
+	db.Create(&product)
+
+	assert.Equal(t, product.CreatedByID, auditUser.ID)
 
 	product.Name = "product_new"
 	db.Save(&product)
-	if product.GetUpdatedBy() != int(user.ID) {
-		t.Errorf("updated_by is not equal current user")
+
+	assert.Equal(t, product.UpdatedByID, auditUser.ID)
+}
+
+func TestCreateUserFail(t *testing.T) {
+	auditUser := OtherUser{Name: "audit"}
+	db.Create(&auditUser)
+
+	ctx := context.WithValue(context.Background(), "gorm:audited:current_user", auditUser)
+	db = db.WithContext(ctx)
+	user := audited.User{Name: "test"}
+	db.Create(&user)
+
+	product := Product{
+		Name: "test",
 	}
+	db.Create(&product)
+
+	assert.NotEqual(t, product.CreatedByID, auditUser.ID)
+
+	product.Name = "product_new"
+	db.Save(&product)
+	assert.NotEqual(t, product.UpdatedByID, auditUser.ID)
 }

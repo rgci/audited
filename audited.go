@@ -9,51 +9,33 @@ type User struct {
 	Name string
 }
 
-// GetID get id
-func (model User) GetID() uint {
-	return model.ID
-}
-
 // AuditedModel make Model Auditable, embed `audited.AuditedModel` into your model as anonymous field to make the model auditable
+// If you want a different user model just create your own base model and make sure it implements the auditableInterface
 //    type User struct {
 //      gorm.Model
 //      audited.AuditedModel
 //    }
 type AuditedModel struct {
-	CreatedByID int
-	UpdatedByID int
-	DeletedByID int
+	gorm.Model
+	CreatedByID uint
+	UpdatedByID uint
+	DeletedByID uint
 	CreatedBy   User `gorm:"foreignKey:CreatedByID"`
 	UpdatedBy   User `gorm:"foreignKey:UpdatedByID"`
 	DeletedBy   User `gorm:"foreignKey:DeletedByID"`
 }
 
-// GetCreatedBy get created by
-func (model AuditedModel) GetCreatedBy() int {
-	return model.CreatedByID
-}
-
 // SetCreatedBy set created by
 func (model AuditedModel) SetCreatedBy(i interface{}) {
-	model.CreatedByID = i.(int)
-}
-
-// GetUpdatedBy get updated by
-func (model AuditedModel) GetUpdatedBy() int {
-	return model.UpdatedByID
+	model.CreatedByID = i.(uint)
 }
 
 // SetUpdatedBy set created by
 func (model AuditedModel) SetUpdatedBy(i interface{}) {
-	model.UpdatedByID = i.(int)
-}
-
-// GetDeletedBy get deleted by
-func (model AuditedModel) GetDeletedBy() int {
-	return model.DeletedByID
+	model.UpdatedByID = i.(uint)
 }
 
 // SetDeletedBy set created by
 func (model AuditedModel) SetDeletedBy(i interface{}) {
-	model.DeletedByID = i.(int)
+	model.DeletedByID = i.(uint)
 }
