@@ -38,6 +38,32 @@ func (model Product) SetDeletedBy(i interface{}) {
 	model.DeletedByID = i.(uint)
 }
 
+type Company struct {
+	gorm.Model
+	Name        string
+	CreatedByID uint
+	UpdatedByID uint
+	DeletedByID uint
+	CreatedBy   *audited.User `gorm:"foreignKey:CreatedByID"`
+	UpdatedBy   *audited.User `gorm:"foreignKey:UpdatedByID"`
+	DeletedBy   *audited.User `gorm:"foreignKey:DeletedByID"`
+}
+
+// SetCreatedBy set created by
+func (model Company) SetCreatedBy(i interface{}) {
+	model.CreatedByID = i.(uint)
+}
+
+// SetUpdatedBy set created by
+func (model Company) SetUpdatedBy(i interface{}) {
+	model.UpdatedByID = i.(uint)
+}
+
+// SetDeletedBy set created by
+func (model Company) SetDeletedBy(i interface{}) {
+	model.DeletedByID = i.(uint)
+}
+
 var db *gorm.DB
 
 func testDB() (*gorm.DB, error) {
@@ -47,7 +73,7 @@ func testDB() (*gorm.DB, error) {
 
 func TestMain(m *testing.M) {
 	db, _ = testDB()
-	db.AutoMigrate(audited.User{}, &Product{}, &OtherUser{})
+	db.AutoMigrate(audited.User{}, &OtherUser{}, &Product{}, &Company{})
 	db.Use(audited.New())
 	code := m.Run()
 	DB, _ := db.DB()
@@ -60,7 +86,7 @@ func TestCreateUserSuccess(t *testing.T) {
 	auditUser := audited.User{Name: "audit"}
 	db.Create(&auditUser)
 
-	ctx := context.WithValue(context.Background(), "gorm:audited:current_user", auditUser)
+	ctx := context.WithValue(context.Background(), audited.GormAuditKey(audited.UserKey), auditUser)
 	db = db.WithContext(ctx)
 	user := audited.User{Name: "test"}
 	db.Create(&user)
@@ -82,7 +108,7 @@ func TestCreateUserFail(t *testing.T) {
 	auditUser := OtherUser{Name: "audit"}
 	db.Create(&auditUser)
 
-	ctx := context.WithValue(context.Background(), "gorm:audited:current_user", auditUser)
+	ctx := context.WithValue(context.Background(), audited.GormAuditKey(audited.UserKey), auditUser)
 	db = db.WithContext(ctx)
 	user := audited.User{Name: "test"}
 	db.Create(&user)
@@ -100,7 +126,7 @@ func TestCreateUserFail(t *testing.T) {
 }
 
 func TestMissingAuditUser(t *testing.T) {
-	ctx := context.WithValue(context.Background(), "gorm:audited:current_user", nil)
+	ctx := context.WithValue(context.Background(), audited.GormAuditKey(audited.UserKey), nil)
 	db = db.WithContext(ctx)
 	user := audited.User{Name: "test"}
 	db.Create(&user)
@@ -115,4 +141,24 @@ func TestMissingAuditUser(t *testing.T) {
 	product.Name = "product_new"
 	db.Save(&product)
 	assert.Equal(t, product.UpdatedByID, uint(0))
+}
+
+func TestCreateCompanySuccess(t *testing.T) {
+	auditUser := audited.User{Name: "audit"}
+	db.Create(&auditUser)
+
+	ctx := context.WithValue(context.Background(), audited.GormAuditKey(audited.UserKey), auditUser)
+	db = db.WithContext(ctx)
+	user := audited.User{Name: "test"}
+	db.Create(&user)
+
+	company := Company{Name: "test"}
+	db.Create(&company)
+
+	assert.Equal(t, company.CreatedByID, auditUser.ID)
+
+	company.Name = "product_new"
+	db.Save(&company)
+
+	assert.Equal(t, company.UpdatedByID, auditUser.ID)
 }

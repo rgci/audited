@@ -7,9 +7,14 @@ import (
 	"gorm.io/gorm"
 )
 
+// UserKey string value for user key to store in context
+const UserKey = "current_user"
 const createdColumn = "CreatedBy"
 const updatedColumn = "UpdatedBy"
 const deletedColumn = "DeletedBy"
+
+// GormAuditKey for storing user context
+type GormAuditKey string
 
 type Audited struct {
 	*gorm.DB
@@ -32,7 +37,7 @@ func isAuditable(db *gorm.DB) (isAuditable bool) {
 func isSameTypeAuditField(db *gorm.DB, f string, u interface{}) error {
 	fieldLookup := db.Statement.Schema.LookUpField(f)
 	typeofUser := reflect.TypeOf(u)
-	if fieldLookup.FieldType != typeofUser {
+	if fieldLookup.IndirectFieldType != typeofUser {
 		return fmt.Errorf(
 			"Types %v and %v do not match. Audited column %v will not be set",
 			fieldLookup.FieldType, typeofUser, f)
@@ -44,7 +49,10 @@ func assignColumn(db *gorm.DB, c string) {
 	if !isAuditable(db) {
 		return
 	}
-	user := db.Statement.Context.Value("gorm:audited:current_user")
+	user := db.Statement.Context.Value(GormAuditKey(UserKey))
+	if user == nil {
+		return
+	}
 	if err := isSameTypeAuditField(db, c, user); err != nil {
 		db.Logger.Error(db.Statement.Context, err.Error())
 		return
